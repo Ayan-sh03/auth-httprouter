@@ -1,0 +1,6 @@
+root = "."
+tmp_dir = "tmp"
+build = "go build"
+bin = "auth" 
+app = ["./auth"]
+log = "air.log"
