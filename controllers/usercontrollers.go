@@ -3,7 +3,6 @@ package controllers
 import (
 	"auth/authorization"
 	"auth/models"
-
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
