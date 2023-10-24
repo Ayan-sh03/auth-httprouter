@@ -52,8 +52,13 @@ func RegisterUser(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
 	if err != nil {
 		log.Fatal("error in generating OTP", err)
 	}
-	message := []byte("To : " + user.Email + "Subject : OTP for Registration \r\n  \r\n" +
-		"Your OTP For registration is " + otp + "\n")
+	message := []byte("To: " + user.Email + "\r\n" +
+		"Subject: OTP for Registration\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/html; charset=\"utf-8\"\r\n\r\n" +
+		"<html><body>" +
+		"<h1>Your OTP for registration is <strong>" + otp + "</strong></h1>" +
+		"</body></html>")
 
 	go func() {
 		err := smtp.SendMail("smtp.gmail.com:587", auth, os.Getenv("EMAIL"), to, message)
