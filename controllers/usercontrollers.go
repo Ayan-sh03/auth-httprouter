@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
+	"strings"
 )
 
 type TokenRequest struct {
@@ -98,12 +99,21 @@ func CheckOtpController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 		respondWithError(w, http.StatusUnauthorized, "Invalid OTP")
 		return
 	}
-	if err := q.UpdateUserByEmail(context.Background(), otpRequest.Email); err != nil {
+
+	tokenString, err := authorization.GenerateJWT(user.Email)
+	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, map[string]string{"message": "OTP Verified"})
+	go func() {
+		if err := q.UpdateUserByEmail(context.Background(), otpRequest.Email); err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+			return
+		}
+	}()
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "OTP Verified", "token": tokenString})
 }
 
 func respondWithError(w http.ResponseWriter, status int, message string) {
@@ -127,8 +137,42 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		return
 	}
 
+	if user.Email == "" {
+		respondWithError(w, http.StatusBadRequest, "Email is missing")
+		return
+	}
+	if user.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Name is missing")
+		return
+	}
+	if user.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Password is missing")
+		return
+	}
+
 	if err := user.HashPassword(user.Password); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	var userError error
+	_, userError = queries.CreateUser(context.Background(), db.CreateUserParams{
+		Email:    user.Email,
+		Name:     user.Name,
+		Password: user.Password,
+		Otp:      sql.NullString{String: user.OTP, Valid: true},
+	})
+
+	if userError != nil {
+		// Log the error for debugging
+		log.Println("Error creating user:", userError)
+
+		// Check if it's a specific database error, like duplicate entry
+		if strings.Contains(userError.Error(), "unique constraint") {
+			respondWithError(w, http.StatusConflict, "Email already in use")
+		} else {
+			respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		}
 		return
 	}
 
@@ -159,18 +203,7 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		}
 	}()
 	//!
-	var erro error
-	_, erro = queries.CreateUser(context.Background(), db.CreateUserParams{
-		Email:    user.Email,
-		Name:     user.Name,
-		Password: user.Password,
-		Otp:      sql.NullString{String: user.OTP, Valid: true},
-	})
 
-	if erro != nil {
-		respondWithError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	// log.Println(record)
 
 	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "User Registered Successfully, OTP sent to your email"})
