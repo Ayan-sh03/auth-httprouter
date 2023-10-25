@@ -2,11 +2,9 @@ package models
 
 import (
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type User struct {
-	gorm.Model
 	Email      string `json:"email" gorm:"uniqueIndex"`
 	Name       string `json:"name"`
 	Password   string `json:"password"`
@@ -14,21 +12,16 @@ type User struct {
 	OTP        string `json:"otp"`
 }
 
-func MigrateUsers(db *gorm.DB) error {
-	err := db.AutoMigrate(&User{})
-	return err
-}
-
 func (user *User) HashPassword(password string) error {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
 		return err
 	}
 	user.Password = string(bytes)
 	return nil
 }
-func (user *User) CheckPassword(providedPassword string) error {
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(providedPassword))
+func CheckPassword(providedPassword string, userPassword string) error {
+	err := bcrypt.CompareHashAndPassword([]byte(userPassword), []byte(providedPassword))
 	if err != nil {
 		return err
 	}
