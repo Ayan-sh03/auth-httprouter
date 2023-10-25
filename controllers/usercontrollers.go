@@ -96,6 +96,7 @@ func CheckOtpController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 		return
 	}
 	userotp := user.Otp
+	log.Println(userotp.String)
 	if otpRequest.OTP != (userotp.String) {
 		respondWithError(w, http.StatusUnauthorized, "Invalid OTP")
 		return
@@ -162,7 +163,13 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
+	otp, err := generateOTP()
 
+	user.OTP = otp
+
+	if err != nil {
+		log.Fatal("error in generating OTP", err)
+	}
 	var userError error
 	_, userError = queries.CreateUser(context.Background(), db.CreateUserParams{
 		Email:    user.Email,
@@ -183,18 +190,11 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		return
 	}
 
-	// log.Println("printing email ", os.Getenv("EMAIL"))
 	//!sending otp
 	auth := smtp.PlainAuth("", os.Getenv("EMAIL"), os.Getenv("PASSWORD"), "smtp.gmail.com")
 
 	to := []string{user.Email}
-	otp, err := generateOTP()
 
-	user.OTP = otp
-
-	if err != nil {
-		log.Fatal("error in generating OTP", err)
-	}
 	message := []byte("To: " + user.Email + "\r\n" +
 		"Subject: OTP for Registration\r\n" +
 		"MIME-Version: 1.0\r\n" +
