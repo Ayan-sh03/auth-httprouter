@@ -2,8 +2,11 @@ package controllers
 
 import (
 	"auth/authorization"
+	"auth/db"
 	"auth/models"
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,11 +14,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
-
-	"gorm.io/gorm"
 )
-
-var cache = make(map[string]string)
 
 type TokenRequest struct {
 	Email    string `json:"email"`
@@ -27,53 +26,6 @@ type OTPRequest struct {
 	OTP   string `json:"otp"`
 }
 
-func RegisterUser(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
-	var user models.User
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&user); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid JSON")
-		return
-	}
-
-	if err := user.HashPassword(user.Password); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
-		return
-	}
-
-	//!sending otp
-	auth := smtp.PlainAuth("", os.Getenv("EMAIL"), os.Getenv("PASSWORD"), "smtp.gmail.com")
-
-	to := []string{user.Email}
-	otp, err := generateOTP()
-	cache[user.Email] = otp
-	user.OTP = otp
-
-	if err != nil {
-		log.Fatal("error in generating OTP", err)
-	}
-	message := []byte("To: " + user.Email + "\r\n" +
-		"Subject: OTP for Registration\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/html; charset=\"utf-8\"\r\n\r\n" +
-		"<html><body>" +
-		"<h1>Your OTP for registration is <strong>" + otp + "</strong></h1>" +
-		"</body></html>")
-
-	go func() {
-		err := smtp.SendMail("smtp.gmail.com:587", auth, os.Getenv("EMAIL"), to, message)
-		if err != nil {
-			log.Println("Error in sending OTP:", err)
-		}
-	}()
-	//!
-	record := Db.Create(&user)
-	if record.Error != nil {
-		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
-		return
-	}
-
-	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "User Registered Successfully, OTP sent to your email"})
-}
 func generateOTP() (string, error) {
 	// Define the range for the OTP (5 digits)
 	min := int64(10000)
@@ -95,22 +47,25 @@ func generateOTP() (string, error) {
 	return (otp), nil
 }
 
-func LoginController(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
+func LoginController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	var request TokenRequest
-	var user models.User
+	var user db.User
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&request); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
-	record := Db.Where("email=?", request.Email).First(&user)
-	if record.Error != nil {
-		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+
+	var err error
+	user, err = q.GetUserByEmail(context.Background(), request.Email) // Use the generated function
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	log.Println(user)
 
-	credentialsError := user.CheckPassword(request.Password)
+	credentialsError := models.CheckPassword(request.Password, user.Password)
 	if credentialsError != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid Credentials")
 		return
@@ -125,7 +80,7 @@ func LoginController(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"token": tokenString})
 }
 
-func CheckOtpController(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
+func CheckOtpController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	var otpRequest OTPRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&otpRequest); err != nil {
@@ -133,19 +88,19 @@ func CheckOtpController(w http.ResponseWriter, r *http.Request, Db *gorm.DB) {
 		return
 	}
 
-	user, err := findUserByEmail(Db, otpRequest.Email)
+	user, err := q.GetUserByEmail(context.Background(), otpRequest.Email)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
-
-	if otpRequest.OTP != user.OTP {
+	userotp := user.Otp
+	if otpRequest.OTP != (userotp.String) {
 		respondWithError(w, http.StatusUnauthorized, "Invalid OTP")
 		return
 	}
-
-	if err := updateUserVerificationStatus(Db, otpRequest.Email); err != nil {
-		log.Println("Error updating user verification status:", err)
+	if err := q.UpdateUserByEmail(context.Background(), otpRequest.Email); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "OTP Verified"})
@@ -164,14 +119,60 @@ func respondWithJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-func findUserByEmail(Db *gorm.DB, email string) (models.User, error) {
+func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.Queries) {
 	var user models.User
-	if err := Db.Where("email=?", email).First(&user).Error; err != nil {
-		return user, err
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&user); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid JSON")
+		return
 	}
-	return user, nil
-}
 
-func updateUserVerificationStatus(Db *gorm.DB, email string) error {
-	return Db.Model(&models.User{}).Where("email = ?", email).Updates(models.User{IsVerified: true}).Error
+	if err := user.HashPassword(user.Password); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+
+	// log.Println("printing email ", os.Getenv("EMAIL"))
+	//!sending otp
+	auth := smtp.PlainAuth("", os.Getenv("EMAIL"), os.Getenv("PASSWORD"), "smtp.gmail.com")
+
+	to := []string{user.Email}
+	otp, err := generateOTP()
+
+	user.OTP = otp
+
+	if err != nil {
+		log.Fatal("error in generating OTP", err)
+	}
+	message := []byte("To: " + user.Email + "\r\n" +
+		"Subject: OTP for Registration\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/html; charset=\"utf-8\"\r\n\r\n" +
+		"<html><body>" +
+		"<h1>Your OTP for registration is <strong>" + otp + "</strong></h1>" +
+		"</body></html>")
+
+	go func() {
+		err := smtp.SendMail("smtp.gmail.com:587", auth, os.Getenv("EMAIL"), to, message)
+		if err != nil {
+			log.Println("Error in sending OTP:", err)
+		}
+	}()
+	//!
+	var erro error
+	_, erro = queries.CreateUser(context.Background(), db.CreateUserParams{
+		Email:    user.Email,
+		Name:     user.Name,
+		Password: user.Password,
+		Otp:      sql.NullString{String: user.OTP, Valid: true},
+	})
+
+	if erro != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// log.Println(record)
+
+	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "User Registered Successfully, OTP sent to your email"})
+
 }
