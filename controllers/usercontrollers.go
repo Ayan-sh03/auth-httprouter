@@ -132,7 +132,7 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		return
 	}
 
-	log.Println("printing email ", os.Getenv("EMAIL"))
+	// log.Println("printing email ", os.Getenv("EMAIL"))
 	//!sending otp
 	auth := smtp.PlainAuth("", os.Getenv("EMAIL"), os.Getenv("PASSWORD"), "smtp.gmail.com")
 
@@ -159,17 +159,18 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		}
 	}()
 	//!
-	record, err := queries.CreateUser(context.Background(), db.CreateUserParams{
+	var erro error
+	_, erro = queries.CreateUser(context.Background(), db.CreateUserParams{
 		Email:    user.Email,
 		Name:     user.Name,
 		Password: user.Password,
 		Otp:      sql.NullString{String: user.OTP, Valid: true},
 	})
-	if err != nil {
+	if erro != nil {
 		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
-	log.Println(record)
+	// log.Println(record)
 
 	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "User Registered Successfully, OTP sent to your email"})
 
