@@ -12,6 +12,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"os"
 	"strings"
@@ -141,6 +142,13 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		respondWithError(w, http.StatusBadRequest, "Email is missing")
 		return
 	}
+
+	_, err := mail.ParseAddress(user.Email)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Please provide a valid email Adress")
+		return
+	}
+
 	if user.Name == "" {
 		respondWithError(w, http.StatusBadRequest, "Name is missing")
 		return
@@ -167,7 +175,6 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		// Log the error for debugging
 		log.Println("Error creating user:", userError)
 
-		// Check if it's a specific database error, like duplicate entry
 		if strings.Contains(userError.Error(), "unique constraint") {
 			respondWithError(w, http.StatusConflict, "Email already in use")
 		} else {
