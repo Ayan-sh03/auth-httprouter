@@ -60,7 +60,7 @@ func LoginController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	var err error
 	user, err = q.GetUserByEmail(context.Background(), request.Email) // Use the generated function
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	log.Println(user)
@@ -166,8 +166,9 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 		Password: user.Password,
 		Otp:      sql.NullString{String: user.OTP, Valid: true},
 	})
+
 	if erro != nil {
-		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// log.Println(record)
