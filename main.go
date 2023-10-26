@@ -11,6 +11,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/lib/pq"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -49,9 +50,17 @@ func main() {
 	router.POST(basePath+"/otp", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		controllers.CheckOtpController(w, r, queries)
 	})
+
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"}, // You can specify specific origins here
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		AllowedHeaders: []string{"Content-Type", "Authorization"},
+	})
+	handler := c.Handler(router)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, router))
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
