@@ -49,6 +49,9 @@ func main() {
 	router.POST(basePath+"/otp", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		controllers.CheckOtpController(w, r, queries)
 	})
-
-	log.Fatal(http.ListenAndServe(":8080", router))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, router))
 }
