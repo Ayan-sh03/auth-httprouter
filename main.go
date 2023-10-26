@@ -4,7 +4,6 @@ import (
 	"auth/controllers"
 	"auth/db"
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -23,12 +22,12 @@ func main() {
 		log.Fatal("Error loading environment")
 	}
 
-	dbname := os.Getenv("DB_NAME")
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASS")
+	// dbname := os.Getenv("DB_NAME")
+	// user := os.Getenv("DB_USER")
+	// password := os.Getenv("DB_PASS")
 
 	// Create the connection string using fmt.Sprintf
-	connectionString := fmt.Sprintf("user=%s dbname=%s password=%s sslmode=disable", user, dbname, password)
+	connectionString := os.Getenv("DB_STRING")
 
 	// Open the database connection
 	Db, err := sql.Open("postgres", connectionString)
