@@ -71,3 +71,31 @@ func (q *Queries) UpdateUserByEmail(ctx context.Context, email string) error {
 	_, err := q.db.ExecContext(ctx, updateUserByEmail, email)
 	return err
 }
+
+const updateUserByPassword = `-- name: UpdateUserByPassword :exec
+UPDATE users SET password = $1 WHERE email = $2
+`
+
+type UpdateUserByPasswordParams struct {
+	Password string
+	Email    string
+}
+
+func (q *Queries) UpdateUserByPassword(ctx context.Context, arg UpdateUserByPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserByPassword, arg.Password, arg.Email)
+	return err
+}
+
+const updateUserOtp = `-- name: UpdateUserOtp :exec
+UPDATE users SET otp = $1 WHERE email = $2
+`
+
+type UpdateUserOtpParams struct {
+	Otp   sql.NullString
+	Email string
+}
+
+func (q *Queries) UpdateUserOtp(ctx context.Context, arg UpdateUserOtpParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserOtp, arg.Otp, arg.Email)
+	return err
+}

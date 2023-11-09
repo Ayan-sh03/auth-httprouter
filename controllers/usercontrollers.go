@@ -28,6 +28,22 @@ type OTPRequest struct {
 	OTP   string `json:"otp"`
 }
 
+// RegisterRequest represents the request body for user registration.
+type RegisterRequest struct {
+	// Define your request fields here
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+type OtpCheckRequest struct {
+	Email string `json:"email"`
+	Otp   string `json:"otp"`
+}
+
 func generateOTP() (string, error) {
 	// Define the range for the OTP (5 digits)
 	min := int64(10000)
@@ -49,6 +65,14 @@ func generateOTP() (string, error) {
 	return (otp), nil
 }
 
+// @Summary User login
+// @Description Endpoint for user login.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body LoginRequest true "User login details"
+// @Success 200 {string} string "Login successful"
+// @Router /api/v1/users/login [post]
 func LoginController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	var request TokenRequest
 	var user db.User
@@ -108,6 +132,14 @@ func LoginController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"token": tokenString})
 }
 
+// @Summary Check OTP
+// @Description Endpoint for checking OTP.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body OtpCheckRequest true "OTP check details"
+// @Success 200 {string} string "OTP verified"
+// @Router /api/v1/users/otp [post]
 func CheckOtpController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
 	var otpRequest OTPRequest
 	decoder := json.NewDecoder(r.Body)
@@ -157,6 +189,14 @@ func respondWithJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
+// @summary Register a new user
+// @description Endpoint for user registration.
+// @tags users
+// @accept json
+// @produce json
+// @param body body RegisterRequest true "User registration details"
+// @success 200 {string} string "Successfully registered"
+// @Router /api/v1/users/register [post]
 func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.Queries) {
 	var user models.User
 	decoder := json.NewDecoder(r.Body)
@@ -240,5 +280,49 @@ func RegisterUserController(w http.ResponseWriter, r *http.Request, queries *db.
 	// log.Println(record)
 
 	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "User Registered Successfully, OTP sent to your email"})
+
+}
+
+func resertPasswordController(w http.ResponseWriter, r *http.Request, q *db.Queries) {
+	decoder := json.NewDecoder(r.Body)
+	var otpRequest OTPRequest
+	if err := decoder.Decode(&otpRequest); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	otp, err := generateOTP()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	auth := smtp.PlainAuth("", os.Getenv("EMAIL"), os.Getenv("PASSWORD"), "smtp.gmail.com")
+
+	to := []string{otpRequest.Email}
+
+	message := []byte("To: " + otpRequest.Email + "\r\n" +
+		"Subject: OTP for Registration\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/html; charset=\"utf-8\"\r\n\r\n" +
+		"<html><body>" +
+		"<h1>Your OTP for Password Reset  is <strong>" + otp + "</strong></h1>" +
+		"</body></html>")
+
+	go func() {
+		err := smtp.SendMail("smtp.gmail.com:587", auth, os.Getenv("EMAIL"), to, message)
+		if err != nil {
+			log.Println("Error in sending OTP:", err)
+		}
+	}()
+
+	go func() {
+		if err := q.UpdateUserOtp(context.Background(), db.UpdateUserOtpParams{
+			Otp:   sql.NullString{String: otp, Valid: true},
+			Email: otpRequest.Email,
+		}); err != nil {
+			log.Fatal("Error Updating User OTP:", err)
+		}
+
+	}()
 
 }
