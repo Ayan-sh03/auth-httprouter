@@ -90,7 +90,7 @@ func main() {
 	// @description Endpoint for Swagger UI.
 	// @produce html
 	router.Get(basePath+"/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("http://localhost:8080/api/v1/users/swagger/doc.json"), // The URL pointing to API definition
+		httpSwagger.URL("/api/v1/users/swagger/doc.json"), // The URL pointing to API definition
 	))
 
 	// CORS configuration
